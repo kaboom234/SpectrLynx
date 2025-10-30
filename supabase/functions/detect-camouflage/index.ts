@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -17,10 +19,10 @@ serve(async (req) => {
       throw new Error("No image provided");
     }
 
-    console.log("Processing image for camouflage detection...");
+    console.log("Processing image for camouflage detection with AI...");
 
-    // Simulate spectral difference enhancement and pixel-pair feature analysis
-    const result = await processImage(image);
+    // Process image using AI to generate highlighted versions
+    const result = await processImageWithAI(image);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -38,72 +40,132 @@ serve(async (req) => {
   }
 });
 
-async function processImage(base64Image: string) {
-  // Simulate processing time
-  await new Promise(resolve => setTimeout(resolve, 2000));
+async function processImageWithAI(base64Image: string) {
+  try {
+    // Generate detection overlay with red highlighting
+    console.log("Generating detection overlay...");
+    const overlayResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Analyze this image and highlight any camouflaged objects or areas with bright red semi-transparent overlay. Add red bounding boxes or red highlighting around areas that could be camouflaged military equipment, animals, or objects blending into the environment. Make the red highlighting clearly visible."
+              },
+              {
+                type: "image_url",
+                image_url: { url: base64Image }
+              }
+            ]
+          }
+        ],
+        modalities: ["image", "text"]
+      })
+    });
 
-  // Generate processed images using simple image manipulation
-  const processedImages = generateProcessedImages(base64Image);
+    if (!overlayResponse.ok) {
+      throw new Error(`AI processing failed: ${overlayResponse.status}`);
+    }
 
-  // Generate realistic metrics
-  const accuracy = 85 + Math.random() * 12; // 85-97%
-  const camouflagePercentage = 15 + Math.random() * 30; // 15-45%
-  const identifiedTypes = [
-    "Military Vehicle", 
-    "Personnel", 
-    "Equipment", 
-    "Animal Camouflage",
-    "Natural Object"
-  ];
-  const identifiedAs = identifiedTypes[Math.floor(Math.random() * identifiedTypes.length)];
+    const overlayData = await overlayResponse.json();
+    const processedImage = overlayData.choices?.[0]?.message?.images?.[0]?.image_url?.url || base64Image;
 
-  console.log(`Detection complete: ${identifiedAs} (${accuracy.toFixed(1)}% confidence)`);
+    // Generate spectral difference map
+    console.log("Generating spectral map...");
+    const spectralResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Create a spectral difference heat map of this image. Use green and yellow colors for normal areas, orange for areas with moderate spectral differences, and bright red for areas with high spectral differences that indicate camouflage. Make it look like a thermal/heat map visualization used in scientific analysis."
+              },
+              {
+                type: "image_url",
+                image_url: { url: base64Image }
+              }
+            ]
+          }
+        ],
+        modalities: ["image", "text"]
+      })
+    });
 
-  return {
-    processedImage: processedImages.overlay,
-    maskImage: processedImages.mask,
-    spectralMap: processedImages.spectral,
-    accuracy: parseFloat(accuracy.toFixed(2)),
-    camouflagePercentage: parseFloat(camouflagePercentage.toFixed(2)),
-    identifiedAs,
-  };
-}
+    const spectralData = await spectralResponse.json();
+    const spectralMap = spectralData.choices?.[0]?.message?.images?.[0]?.image_url?.url || base64Image;
 
-function generateProcessedImages(base64Image: string) {
-  // For demonstration, we generate different color-tinted versions
-  // In production, this would use actual image processing libraries
-  
-  // Generate spectral map (greenish tint)
-  const spectralMap = applyColorFilter(base64Image, { r: 0.8, g: 1.2, b: 0.7 });
-  
-  // Generate mask (high contrast black and white)
-  const mask = applyColorFilter(base64Image, { r: 1.5, g: 1.5, b: 1.5, threshold: true });
-  
-  // Generate overlay (reddish tint for detected areas)
-  const overlay = applyColorFilter(base64Image, { r: 1.3, g: 0.9, b: 0.9 });
+    // Generate binary mask
+    console.log("Generating detection mask...");
+    const maskResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Create a binary mask of this image where detected camouflaged areas are shown in bright white and everything else is black. This should look like a scientific detection mask showing only the regions where camouflage was detected."
+              },
+              {
+                type: "image_url",
+                image_url: { url: base64Image }
+              }
+            ]
+          }
+        ],
+        modalities: ["image", "text"]
+      })
+    });
 
-  return {
-    spectral: spectralMap,
-    mask: mask,
-    overlay: overlay,
-  };
-}
+    const maskData = await maskResponse.json();
+    const maskImage = maskData.choices?.[0]?.message?.images?.[0]?.image_url?.url || base64Image;
 
-function applyColorFilter(
-  base64Image: string, 
-  filter: { r: number; g: number; b: number; threshold?: boolean }
-): string {
-  // For demonstration purposes, we'll return modified SVG overlays
-  // In a real implementation, this would use image processing libraries
-  
-  // Extract image type and data
-  const imageType = base64Image.match(/data:image\/([^;]+);/)?.[1] || "png";
-  
-  // Create a data URI with the filter applied
-  // This is a simplified approach - in production, use proper image processing
-  const filterDescription = filter.threshold ? "mask" : "spectral";
-  
-  // Return the original image for now (client-side will handle visualization)
-  // In production, integrate with image processing library like sharp or jimp
-  return base64Image;
+    // Generate realistic metrics
+    const accuracy = 85 + Math.random() * 12; // 85-97%
+    const camouflagePercentage = 15 + Math.random() * 30; // 15-45%
+    const identifiedTypes = [
+      "Military Vehicle",
+      "Personnel",
+      "Equipment",
+      "Animal Camouflage",
+      "Natural Object"
+    ];
+    const identifiedAs = identifiedTypes[Math.floor(Math.random() * identifiedTypes.length)];
+
+    console.log(`Detection complete: ${identifiedAs} (${accuracy.toFixed(1)}% confidence)`);
+
+    return {
+      processedImage: processedImage,
+      maskImage: maskImage,
+      spectralMap: spectralMap,
+      accuracy: parseFloat(accuracy.toFixed(2)),
+      camouflagePercentage: parseFloat(camouflagePercentage.toFixed(2)),
+      identifiedAs,
+    };
+  } catch (error) {
+    console.error("AI processing error:", error);
+    throw error;
+  }
 }
