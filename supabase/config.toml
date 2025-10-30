@@ -1,0 +1,4 @@
+project_id = "ccnwhpwdcnfnupssohki"
+
+[functions.detect-camouflage]
+verify_jwt = false
