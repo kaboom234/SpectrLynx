@@ -59,12 +59,19 @@ const Detect = () => {
     const startTime = Date.now();
 
     try {
+      // Import image processing utility
+      const { processImageWithHighlighting } = await import("@/utils/imageProcessing");
+      
       // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(selectedFile);
       reader.onload = async () => {
         const base64Image = reader.result as string;
 
+        // Process image locally with visible highlighting
+        const processedImages = await processImageWithHighlighting(base64Image);
+
+        // Get analysis metrics from backend
         const { data, error } = await supabase.functions.invoke("detect-camouflage", {
           body: { image: base64Image },
         });
@@ -74,7 +81,12 @@ const Detect = () => {
         const processingTime = (Date.now() - startTime) / 1000;
         
         setResult({
-          ...data,
+          processedImage: processedImages.overlay,
+          maskImage: processedImages.mask,
+          spectralMap: processedImages.spectral,
+          accuracy: data.accuracy,
+          camouflagePercentage: data.camouflagePercentage,
+          identifiedAs: data.identifiedAs,
           originalImage: previewUrl,
           processingTime,
         });
