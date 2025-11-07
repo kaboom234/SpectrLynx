@@ -58,13 +58,13 @@ function createRedOverlay(imageData: ImageData): ImageData {
       const isBrownish = (r > 100 && g > 80 && b < 120) && (r - b > 20);
       const hasLowVariance = Math.abs(r - g) < 30 && Math.abs(g - b) < 30;
 
-      // Add red overlay to suspected camouflage areas
+      // Add bright red overlay to suspected camouflage areas
       if (isGreenish || isBrownish || (hasLowVariance && g > 60)) {
-        // Add random variation for realistic detection
         if (Math.random() > 0.3) {
-          data[idx] = Math.min(255, r + 120);     // Increase red
-          data[idx + 1] = Math.max(0, g - 40);    // Decrease green
-          data[idx + 2] = Math.max(0, b - 40);    // Decrease blue
+          // Strong red overlay with semi-transparency effect
+          data[idx] = 255;                         // Maximum red
+          data[idx + 1] = Math.max(0, g * 0.3);   // Reduce green significantly
+          data[idx + 2] = Math.max(0, b * 0.3);   // Reduce blue significantly
         }
       }
     }
@@ -85,31 +85,42 @@ function createSpectralMap(imageData: ImageData): ImageData {
       const g = data[idx + 1];
       const b = data[idx + 2];
 
-      // Calculate spectral difference (variance between channels)
-      const variance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(b - r);
-      const normalized = Math.min(255, variance * 2);
+      // Detect camouflaged areas first
+      const isGreenish = g > r * 0.9 && g > b * 0.9;
+      const isBrownish = (r > 100 && g > 80 && b < 120) && (r - b > 20);
+      const hasLowVariance = Math.abs(r - g) < 30 && Math.abs(g - b) < 30;
+      const isCamouflage = (isGreenish || isBrownish || (hasLowVariance && g > 60)) && Math.random() > 0.3;
 
-      // Create heat map: blue -> green -> yellow -> red
-      if (normalized < 64) {
-        // Blue to Cyan
-        data[idx] = 0;
-        data[idx + 1] = normalized * 3;
-        data[idx + 2] = 255;
-      } else if (normalized < 128) {
-        // Cyan to Green
-        data[idx] = 0;
-        data[idx + 1] = 255;
-        data[idx + 2] = 255 - (normalized - 64) * 4;
-      } else if (normalized < 192) {
-        // Green to Yellow
-        data[idx] = (normalized - 128) * 4;
-        data[idx + 1] = 255;
-        data[idx + 2] = 0;
+      if (isCamouflage) {
+        // Calculate intensity of camouflage for heat map
+        const camoIntensity = hasLowVariance ? 
+          (255 - (Math.abs(r - g) + Math.abs(g - b) + Math.abs(b - r))) : 
+          (g + r) / 2;
+        const normalized = Math.min(255, camoIntensity);
+
+        // Create heat map: green -> yellow -> red (only for camouflaged areas)
+        if (normalized < 85) {
+          // Green (low intensity camouflage)
+          data[idx] = 0;
+          data[idx + 1] = 200;
+          data[idx + 2] = 0;
+        } else if (normalized < 170) {
+          // Yellow (medium intensity camouflage)
+          data[idx] = 255;
+          data[idx + 1] = 200;
+          data[idx + 2] = 0;
+        } else {
+          // Red (high intensity camouflage)
+          data[idx] = 255;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+        }
       } else {
-        // Yellow to Red
-        data[idx] = 255;
-        data[idx + 1] = 255 - (normalized - 192) * 4;
-        data[idx + 2] = 0;
+        // Keep original image (grayscale) for non-camouflaged areas
+        const gray = (r + g + b) / 3;
+        data[idx] = gray;
+        data[idx + 1] = gray;
+        data[idx + 2] = gray;
       }
     }
   }
