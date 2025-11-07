@@ -85,42 +85,55 @@ function createSpectralMap(imageData: ImageData): ImageData {
       const g = data[idx + 1];
       const b = data[idx + 2];
 
-      // Detect camouflaged areas first
+      // Detect camouflaged areas
       const isGreenish = g > r * 0.9 && g > b * 0.9;
       const isBrownish = (r > 100 && g > 80 && b < 120) && (r - b > 20);
       const hasLowVariance = Math.abs(r - g) < 30 && Math.abs(g - b) < 30;
+      const variance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(b - r);
+      
       const isCamouflage = (isGreenish || isBrownish || (hasLowVariance && g > 60)) && Math.random() > 0.3;
 
       if (isCamouflage) {
-        // Calculate intensity of camouflage for heat map
-        const camoIntensity = hasLowVariance ? 
-          (255 - (Math.abs(r - g) + Math.abs(g - b) + Math.abs(b - r))) : 
-          (g + r) / 2;
-        const normalized = Math.min(255, camoIntensity);
-
-        // Create heat map: green -> yellow -> red (only for camouflaged areas)
-        if (normalized < 85) {
-          // Green (low intensity camouflage)
+        // Calculate intensity based on how well-camouflaged it is
+        // Lower variance = better camouflage = hotter color
+        const camoQuality = 255 - Math.min(255, variance * 3);
+        
+        // Create thermal-style heat map: blue (low) -> cyan -> green -> yellow -> orange -> red (high)
+        if (camoQuality < 50) {
+          // Blue (barely camouflaged)
           data[idx] = 0;
-          data[idx + 1] = 200;
+          data[idx + 1] = camoQuality * 2;
+          data[idx + 2] = 255;
+        } else if (camoQuality < 100) {
+          // Cyan to Green
+          const progress = (camoQuality - 50) / 50;
+          data[idx] = 0;
+          data[idx + 1] = 100 + (progress * 155);
+          data[idx + 2] = 255 - (progress * 255);
+        } else if (camoQuality < 150) {
+          // Green to Yellow
+          const progress = (camoQuality - 100) / 50;
+          data[idx] = progress * 255;
+          data[idx + 1] = 255;
           data[idx + 2] = 0;
-        } else if (normalized < 170) {
-          // Yellow (medium intensity camouflage)
+        } else if (camoQuality < 200) {
+          // Yellow to Orange
+          const progress = (camoQuality - 150) / 50;
           data[idx] = 255;
-          data[idx + 1] = 200;
+          data[idx + 1] = 255 - (progress * 100);
           data[idx + 2] = 0;
         } else {
-          // Red (high intensity camouflage)
+          // Orange to Red (highly camouflaged)
+          const progress = (camoQuality - 200) / 55;
           data[idx] = 255;
-          data[idx + 1] = 0;
+          data[idx + 1] = 155 - (progress * 155);
           data[idx + 2] = 0;
         }
       } else {
-        // Keep original image (grayscale) for non-camouflaged areas
-        const gray = (r + g + b) / 3;
-        data[idx] = gray;
-        data[idx + 1] = gray;
-        data[idx + 2] = gray;
+        // Darken non-camouflaged areas significantly
+        data[idx] = r * 0.2;
+        data[idx + 1] = g * 0.2;
+        data[idx + 2] = b * 0.2;
       }
     }
   }
