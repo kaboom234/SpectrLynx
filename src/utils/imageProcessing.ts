@@ -44,56 +44,72 @@ function createRedOverlay(imageData: ImageData): ImageData {
   const data = new Uint8ClampedArray(imageData.data);
   const width = imageData.width;
   const height = imageData.height;
+  const windowSize = 12;
 
-  // First pass: detect edges and pattern anomalies
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  // Analyze each pixel by comparing local area vs surrounding context
+  for (let y = windowSize; y < height - windowSize; y++) {
+    for (let x = windowSize; x < width - windowSize; x++) {
       const idx = (y * width + x) * 4;
       
-      // Get current pixel
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
+      // Calculate average of immediate local area (potential camouflage object)
+      let localR = 0, localG = 0, localB = 0, localCount = 0;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          localR += data[i];
+          localG += data[i + 1];
+          localB += data[i + 2];
+          localCount++;
+        }
+      }
+      localR /= localCount;
+      localG /= localCount;
+      localB /= localCount;
       
-      // Analyze neighboring pixels for edge detection and pattern analysis
-      let edgeStrength = 0;
-      let patternComplexity = 0;
-      
-      // Check 3x3 neighborhood
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nIdx = ((y + dy) * width + (x + dx)) * 4;
-          const nr = data[nIdx];
-          const ng = data[nIdx + 1];
-          const nb = data[nIdx + 2];
-          
-          // Calculate color difference for edge detection
-          const colorDiff = Math.abs(r - nr) + Math.abs(g - ng) + Math.abs(b - nb);
-          edgeStrength += colorDiff;
-          
-          // Pattern complexity (high-frequency changes indicate camouflage patterns)
-          if (colorDiff > 20 && colorDiff < 100) {
-            patternComplexity++;
+      // Calculate average of surrounding ring (background context)
+      let surroundR = 0, surroundG = 0, surroundB = 0, surroundCount = 0;
+      for (let dy = -windowSize; dy <= windowSize; dy++) {
+        for (let dx = -windowSize; dx <= windowSize; dx++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist >= 8 && dist <= windowSize) {
+            const i = ((y + dy) * width + (x + dx)) * 4;
+            surroundR += data[i];
+            surroundG += data[i + 1];
+            surroundB += data[i + 2];
+            surroundCount++;
           }
         }
       }
+      surroundR /= surroundCount;
+      surroundG /= surroundCount;
+      surroundB /= surroundCount;
       
-      // Detect camouflaged objects:
-      // 1. Has defined edges (not blurry natural background)
-      // 2. Has pattern complexity (artificial camouflage patterns)
-      // 3. Colors blend with environment but have structure
-      const hasDefinedEdges = edgeStrength > 200 && edgeStrength < 800;
-      const hasCamoPattern = patternComplexity >= 3;
-      const hasNaturalColors = (g > 40 && g < 180) || (r > 60 && r < 150 && g > 50 && g < 140);
+      // Calculate how different the local area is from its surroundings
+      const colorAnomaly = Math.abs(localR - surroundR) + 
+                          Math.abs(localG - surroundG) + 
+                          Math.abs(localB - surroundB);
       
-      // Detect camouflaged areas
-      if ((hasDefinedEdges && hasCamoPattern && hasNaturalColors) || 
-          (patternComplexity >= 5 && hasNaturalColors)) {
-        // Add bright red overlay
+      // Check for repetitive patterns (military camo signature)
+      let patternScore = 0;
+      for (let dx = 1; dx <= 5; dx++) {
+        const i1 = (y * width + (x - dx)) * 4;
+        const i2 = (y * width + (x + dx)) * 4;
+        if (i1 >= 0 && i2 < data.length) {
+          const diff = Math.abs(data[i1] - data[i2]);
+          if (diff > 10 && diff < 40) patternScore++;
+        }
+      }
+      
+      // Camouflage detection: SUBTLE anomaly (not too different, not too similar) + patterns
+      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const hasPattern = patternScore >= 2;
+      
+      if (isSubtleAnomaly && hasPattern) {
+        // Apply red overlay
+        const intensity = Math.min(colorAnomaly / 100, 0.7);
         data[idx] = 255;
-        data[idx + 1] = Math.max(0, g * 0.2);
-        data[idx + 2] = Math.max(0, b * 0.2);
+        data[idx + 1] = data[idx + 1] * (1 - intensity);
+        data[idx + 2] = data[idx + 2] * (1 - intensity);
       }
     }
   }
@@ -105,75 +121,95 @@ function createSpectralMap(imageData: ImageData): ImageData {
   const data = new Uint8ClampedArray(imageData.data);
   const width = imageData.width;
   const height = imageData.height;
+  const windowSize = 12;
 
-  // Analyze texture patterns across the image
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  for (let y = windowSize; y < height - windowSize; y++) {
+    for (let x = windowSize; x < width - windowSize; x++) {
       const idx = (y * width + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
       
-      // Analyze neighborhood for camouflage detection
-      let edgeStrength = 0;
-      let patternComplexity = 0;
-      let colorVariation = 0;
+      // Local area average
+      let localR = 0, localG = 0, localB = 0, localCount = 0;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          localR += data[i];
+          localG += data[i + 1];
+          localB += data[i + 2];
+          localCount++;
+        }
+      }
+      localR /= localCount;
+      localG /= localCount;
+      localB /= localCount;
       
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nIdx = ((y + dy) * width + (x + dx)) * 4;
-          const colorDiff = Math.abs(r - data[nIdx]) + Math.abs(g - data[nIdx + 1]) + Math.abs(b - data[nIdx + 2]);
-          edgeStrength += colorDiff;
-          
-          if (colorDiff > 20 && colorDiff < 100) patternComplexity++;
-          colorVariation += colorDiff;
+      // Surrounding context average
+      let surroundR = 0, surroundG = 0, surroundB = 0, surroundCount = 0;
+      for (let dy = -windowSize; dy <= windowSize; dy++) {
+        for (let dx = -windowSize; dx <= windowSize; dx++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist >= 8 && dist <= windowSize) {
+            const i = ((y + dy) * width + (x + dx)) * 4;
+            surroundR += data[i];
+            surroundG += data[i + 1];
+            surroundB += data[i + 2];
+            surroundCount++;
+          }
+        }
+      }
+      surroundR /= surroundCount;
+      surroundG /= surroundCount;
+      surroundB /= surroundCount;
+      
+      const colorAnomaly = Math.abs(localR - surroundR) + 
+                          Math.abs(localG - surroundG) + 
+                          Math.abs(localB - surroundB);
+      
+      let patternScore = 0;
+      for (let dx = 1; dx <= 5; dx++) {
+        const i1 = (y * width + (x - dx)) * 4;
+        const i2 = (y * width + (x + dx)) * 4;
+        if (i1 >= 0 && i2 < data.length) {
+          const diff = Math.abs(data[i1] - data[i2]);
+          if (diff > 10 && diff < 40) patternScore++;
         }
       }
       
-      // Detect camouflage: structured edges + patterns + natural colors
-      const hasDefinedEdges = edgeStrength > 200 && edgeStrength < 800;
-      const hasCamoPattern = patternComplexity >= 3;
-      const hasNaturalColors = (g > 40 && g < 180) || (r > 60 && r < 150 && g > 50 && g < 140);
+      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const hasPattern = patternScore >= 2;
       
-      const isCamouflage = (hasDefinedEdges && hasCamoPattern && hasNaturalColors) || 
-                           (patternComplexity >= 5 && hasNaturalColors);
-      
-      if (isCamouflage) {
-        // Calculate camouflage intensity based on pattern complexity and edge definition
-        const camoIntensity = Math.min(255, (patternComplexity * 40) + (edgeStrength / 4));
+      if (isSubtleAnomaly && hasPattern) {
+        // Thermal gradient based on anomaly intensity
+        const intensity = Math.min(colorAnomaly / 90, 1.0);
         
-        // Thermal heat map: blue (weak) -> cyan -> green -> yellow -> orange -> red (strong)
-        if (camoIntensity < 50) {
+        if (intensity < 0.25) {
+          // Blue
           data[idx] = 0;
-          data[idx + 1] = 100 + camoIntensity;
+          data[idx + 1] = intensity * 4 * 200;
           data[idx + 2] = 255;
-        } else if (camoIntensity < 100) {
-          const t = (camoIntensity - 50) / 50;
+        } else if (intensity < 0.5) {
+          // Cyan to green
+          const t = (intensity - 0.25) * 4;
           data[idx] = 0;
-          data[idx + 1] = 150 + (t * 105);
-          data[idx + 2] = 255 - (t * 150);
-        } else if (camoIntensity < 150) {
-          const t = (camoIntensity - 100) / 50;
+          data[idx + 1] = 200 + (t * 55);
+          data[idx + 2] = 255 - (t * 255);
+        } else if (intensity < 0.75) {
+          // Yellow to orange
+          const t = (intensity - 0.5) * 4;
           data[idx] = t * 255;
           data[idx + 1] = 255;
-          data[idx + 2] = 105 - (t * 105);
-        } else if (camoIntensity < 200) {
-          const t = (camoIntensity - 150) / 50;
-          data[idx] = 255;
-          data[idx + 1] = 255 - (t * 100);
           data[idx + 2] = 0;
         } else {
-          const t = (camoIntensity - 200) / 55;
+          // Red
+          const t = (intensity - 0.75) * 4;
           data[idx] = 255;
-          data[idx + 1] = 155 - (t * 155);
+          data[idx + 1] = 255 - (t * 255);
           data[idx + 2] = 0;
         }
       } else {
-        // Very dark for non-camouflage areas
-        data[idx] = r * 0.15;
-        data[idx + 1] = g * 0.15;
-        data[idx + 2] = b * 0.15;
+        // Very dark for non-camouflage
+        data[idx] = data[idx] * 0.08;
+        data[idx + 1] = data[idx + 1] * 0.08;
+        data[idx + 2] = data[idx + 2] * 0.08;
       }
     }
   }
@@ -185,37 +221,64 @@ function createBinaryMask(imageData: ImageData): ImageData {
   const data = new Uint8ClampedArray(imageData.data);
   const width = imageData.width;
   const height = imageData.height;
+  const windowSize = 12;
 
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  for (let y = windowSize; y < height - windowSize; y++) {
+    for (let x = windowSize; x < width - windowSize; x++) {
       const idx = (y * width + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-
-      // Edge and pattern detection
-      let edgeStrength = 0;
-      let patternComplexity = 0;
       
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nIdx = ((y + dy) * width + (x + dx)) * 4;
-          const colorDiff = Math.abs(r - data[nIdx]) + Math.abs(g - data[nIdx + 1]) + Math.abs(b - data[nIdx + 2]);
-          edgeStrength += colorDiff;
-          if (colorDiff > 20 && colorDiff < 100) patternComplexity++;
+      // Local area average
+      let localR = 0, localG = 0, localB = 0, localCount = 0;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          localR += data[i];
+          localG += data[i + 1];
+          localB += data[i + 2];
+          localCount++;
+        }
+      }
+      localR /= localCount;
+      localG /= localCount;
+      localB /= localCount;
+      
+      // Surrounding context average
+      let surroundR = 0, surroundG = 0, surroundB = 0, surroundCount = 0;
+      for (let dy = -windowSize; dy <= windowSize; dy++) {
+        for (let dx = -windowSize; dx <= windowSize; dx++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist >= 8 && dist <= windowSize) {
+            const i = ((y + dy) * width + (x + dx)) * 4;
+            surroundR += data[i];
+            surroundG += data[i + 1];
+            surroundB += data[i + 2];
+            surroundCount++;
+          }
+        }
+      }
+      surroundR /= surroundCount;
+      surroundG /= surroundCount;
+      surroundB /= surroundCount;
+      
+      const colorAnomaly = Math.abs(localR - surroundR) + 
+                          Math.abs(localG - surroundG) + 
+                          Math.abs(localB - surroundB);
+      
+      let patternScore = 0;
+      for (let dx = 1; dx <= 5; dx++) {
+        const i1 = (y * width + (x - dx)) * 4;
+        const i2 = (y * width + (x + dx)) * 4;
+        if (i1 >= 0 && i2 < data.length) {
+          const diff = Math.abs(data[i1] - data[i2]);
+          if (diff > 10 && diff < 40) patternScore++;
         }
       }
       
-      const hasDefinedEdges = edgeStrength > 200 && edgeStrength < 800;
-      const hasCamoPattern = patternComplexity >= 3;
-      const hasNaturalColors = (g > 40 && g < 180) || (r > 60 && r < 150 && g > 50 && g < 140);
+      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const hasPattern = patternScore >= 2;
       
-      // White for camouflaged areas, black for background
-      const isCamouflage = (hasDefinedEdges && hasCamoPattern && hasNaturalColors) || 
-                           (patternComplexity >= 5 && hasNaturalColors);
-      const color = isCamouflage ? 255 : 0;
-
+      // Binary: white for camouflage, black for background
+      const color = (isSubtleAnomaly && hasPattern) ? 255 : 0;
       data[idx] = color;
       data[idx + 1] = color;
       data[idx + 2] = color;
