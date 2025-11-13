@@ -16,6 +16,13 @@ export interface DetectionResult {
   camouflagePercentage: number;
   identifiedAs: string;
   processingTime: number;
+  aiAnalysis?: {
+    objectType: string;
+    species?: string;
+    confidence: number;
+    description: string;
+    camouflageAnalysis: string;
+  };
 }
 
 const Detect = () => {
@@ -78,6 +85,24 @@ const Detect = () => {
 
         if (error) throw error;
 
+        // Get AI-powered analysis of the camouflaged object
+        let aiAnalysis;
+        try {
+          const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-camouflage", {
+            body: { 
+              imageBase64: base64Image,
+              maskBase64: processedImages.mask
+            }
+          });
+
+          if (!analysisError && analysisData) {
+            aiAnalysis = analysisData;
+          }
+        } catch (analysisError) {
+          console.error("AI analysis error:", analysisError);
+          // Continue without AI analysis if it fails
+        }
+
         const processingTime = (Date.now() - startTime) / 1000;
         
         setResult({
@@ -89,6 +114,7 @@ const Detect = () => {
           identifiedAs: data.identifiedAs,
           originalImage: previewUrl,
           processingTime,
+          aiAnalysis,
         });
 
         toast({

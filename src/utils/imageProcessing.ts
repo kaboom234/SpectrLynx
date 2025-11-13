@@ -101,7 +101,7 @@ function createRedOverlay(imageData: ImageData): ImageData {
       }
       
       // Camouflage detection: SUBTLE anomaly (not too different, not too similar) + patterns
-      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const isSubtleAnomaly = colorAnomaly > 18 && colorAnomaly < 95;
       const hasPattern = patternScore >= 2;
       
       if (isSubtleAnomaly && hasPattern) {

@@ -147,20 +147,61 @@ export const ResultsDisplay = ({ result, onReset }: ResultsDisplayProps) => {
             </Card>
           </div>
 
+          {/* AI Analysis */}
+          {result.aiAnalysis && (
+            <Card className="p-6 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
+              <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                <span className="text-primary">🎯</span>
+                AI Detection Analysis
+              </h3>
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">Identified Object</p>
+                    <p className="text-lg font-semibold text-foreground">
+                      {result.aiAnalysis.objectType}
+                      {result.aiAnalysis.species && ` - ${result.aiAnalysis.species}`}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">AI Confidence</p>
+                    <p className="text-lg font-semibold text-primary">
+                      {result.aiAnalysis.confidence}%
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Physical Description</p>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {result.aiAnalysis.description}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Camouflage Analysis</p>
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {result.aiAnalysis.camouflageAnalysis}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Analysis Details */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">
-              Analysis Details
+              Technical Details
             </h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-muted-foreground">Detection Method</span>
                 <span className="font-medium text-foreground">
-                  Spectral Difference Enhancement + Pixel-Pair Analysis
+                  Anomaly Detection + Pattern Analysis
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-muted-foreground">Confidence Score</span>
+                <span className="text-muted-foreground">Detection Confidence</span>
                 <span className="font-medium text-foreground">
                   {result.accuracy.toFixed(2)}%
                 </span>
@@ -172,7 +213,7 @@ export const ResultsDisplay = ({ result, onReset }: ResultsDisplayProps) => {
                 </span>
               </div>
               <div className="flex justify-between py-2">
-                <span className="text-muted-foreground">Detected Object Type</span>
+                <span className="text-muted-foreground">Initial Classification</span>
                 <span className="font-medium text-foreground">
                   {result.identifiedAs}
                 </span>
