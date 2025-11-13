@@ -122,10 +122,14 @@ function createSpectralMap(imageData: ImageData): ImageData {
   const width = imageData.width;
   const height = imageData.height;
   const windowSize = 12;
+  
+  // First pass: detect camouflage areas
+  const detectionMap = new Uint8ClampedArray(width * height);
 
   for (let y = windowSize; y < height - windowSize; y++) {
     for (let x = windowSize; x < width - windowSize; x++) {
       const idx = (y * width + x) * 4;
+      const mapIdx = y * width + x;
       
       // Local area average
       let localR = 0, localG = 0, localB = 0, localCount = 0;
@@ -174,28 +178,60 @@ function createSpectralMap(imageData: ImageData): ImageData {
         }
       }
       
-      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const isSubtleAnomaly = colorAnomaly > 15 && colorAnomaly < 100;
       const hasPattern = patternScore >= 2;
       
-      if (isSubtleAnomaly && hasPattern) {
-        // Thermal gradient based on anomaly intensity
-        const intensity = Math.min(colorAnomaly / 90, 1.0);
-        
-        if (intensity < 0.25) {
+      detectionMap[mapIdx] = (isSubtleAnomaly && hasPattern) ? Math.min(colorAnomaly, 255) : 0;
+    }
+  }
+  
+  // Second pass: dilate to fill the entire camouflaged region
+  const dilatedMap = new Uint8ClampedArray(detectionMap);
+  const dilationRadius = 8;
+  
+  for (let y = dilationRadius; y < height - dilationRadius; y++) {
+    for (let x = dilationRadius; x < width - dilationRadius; x++) {
+      const mapIdx = y * width + x;
+      if (detectionMap[mapIdx] > 0) {
+        // Spread detection to neighbors
+        for (let dy = -dilationRadius; dy <= dilationRadius; dy++) {
+          for (let dx = -dilationRadius; dx <= dilationRadius; dx++) {
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist <= dilationRadius) {
+              const neighborIdx = (y + dy) * width + (x + dx);
+              const falloff = 1 - (dist / dilationRadius);
+              dilatedMap[neighborIdx] = Math.max(dilatedMap[neighborIdx], detectionMap[mapIdx] * falloff);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Third pass: apply thermal gradient
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const mapIdx = y * width + x;
+      const intensity = Math.min(dilatedMap[mapIdx] / 100, 1.0);
+      
+      if (intensity > 0.1) {
+        // Thermal gradient based on intensity
+        if (intensity < 0.3) {
           // Blue
           data[idx] = 0;
-          data[idx + 1] = intensity * 4 * 200;
+          data[idx + 1] = intensity * 3.3 * 200;
           data[idx + 2] = 255;
         } else if (intensity < 0.5) {
           // Cyan to green
-          const t = (intensity - 0.25) * 4;
+          const t = (intensity - 0.3) * 5;
           data[idx] = 0;
           data[idx + 1] = 200 + (t * 55);
           data[idx + 2] = 255 - (t * 255);
         } else if (intensity < 0.75) {
           // Yellow to orange
           const t = (intensity - 0.5) * 4;
-          data[idx] = t * 255;
+          data[idx] = 255;
           data[idx + 1] = 255;
           data[idx + 2] = 0;
         } else {
@@ -206,10 +242,10 @@ function createSpectralMap(imageData: ImageData): ImageData {
           data[idx + 2] = 0;
         }
       } else {
-        // Very dark for non-camouflage
-        data[idx] = data[idx] * 0.08;
-        data[idx + 1] = data[idx + 1] * 0.08;
-        data[idx + 2] = data[idx + 2] * 0.08;
+        // Very dark for background
+        data[idx] = data[idx] * 0.05;
+        data[idx + 1] = data[idx + 1] * 0.05;
+        data[idx + 2] = data[idx + 2] * 0.05;
       }
     }
   }
@@ -222,10 +258,13 @@ function createBinaryMask(imageData: ImageData): ImageData {
   const width = imageData.width;
   const height = imageData.height;
   const windowSize = 12;
+  
+  // First pass: detect camouflage areas
+  const detectionMap = new Uint8ClampedArray(width * height);
 
   for (let y = windowSize; y < height - windowSize; y++) {
     for (let x = windowSize; x < width - windowSize; x++) {
-      const idx = (y * width + x) * 4;
+      const mapIdx = y * width + x;
       
       // Local area average
       let localR = 0, localG = 0, localB = 0, localCount = 0;
@@ -274,11 +313,65 @@ function createBinaryMask(imageData: ImageData): ImageData {
         }
       }
       
-      const isSubtleAnomaly = colorAnomaly > 20 && colorAnomaly < 90;
+      const isSubtleAnomaly = colorAnomaly > 15 && colorAnomaly < 100;
       const hasPattern = patternScore >= 2;
       
-      // Binary: white for camouflage, black for background
-      const color = (isSubtleAnomaly && hasPattern) ? 255 : 0;
+      detectionMap[mapIdx] = (isSubtleAnomaly && hasPattern) ? 1 : 0;
+    }
+  }
+  
+  // Second pass: morphological closing to fill holes and connect regions
+  const dilatedMap = new Uint8ClampedArray(detectionMap);
+  const morphRadius = 6;
+  
+  // Dilation
+  for (let y = morphRadius; y < height - morphRadius; y++) {
+    for (let x = morphRadius; x < width - morphRadius; x++) {
+      const mapIdx = y * width + x;
+      if (detectionMap[mapIdx] === 1) {
+        for (let dy = -morphRadius; dy <= morphRadius; dy++) {
+          for (let dx = -morphRadius; dx <= morphRadius; dx++) {
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist <= morphRadius) {
+              dilatedMap[(y + dy) * width + (x + dx)] = 1;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Erosion to smooth boundaries
+  const finalMap = new Uint8ClampedArray(dilatedMap);
+  const erosionRadius = 3;
+  
+  for (let y = erosionRadius; y < height - erosionRadius; y++) {
+    for (let x = erosionRadius; x < width - erosionRadius; x++) {
+      const mapIdx = y * width + x;
+      let allOnes = true;
+      
+      for (let dy = -erosionRadius; dy <= erosionRadius && allOnes; dy++) {
+        for (let dx = -erosionRadius; dx <= erosionRadius && allOnes; dx++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist <= erosionRadius) {
+            if (dilatedMap[(y + dy) * width + (x + dx)] === 0) {
+              allOnes = false;
+            }
+          }
+        }
+      }
+      
+      finalMap[mapIdx] = allOnes ? 1 : 0;
+    }
+  }
+  
+  // Third pass: apply binary colors
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const mapIdx = y * width + x;
+      const color = finalMap[mapIdx] === 1 ? 255 : 0;
+      
       data[idx] = color;
       data[idx + 1] = color;
       data[idx + 2] = color;
