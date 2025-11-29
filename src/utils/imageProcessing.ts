@@ -93,20 +93,48 @@ function detectCamouflage(imageData: ImageData): Uint8ClampedArray {
                           Math.abs(localG - surroundG) + 
                           Math.abs(localB - surroundB);
       
-      let patternScore = 0;
-      for (let dx = 1; dx <= 5; dx++) {
-        const i1 = (y * width + (x - dx)) * 4;
-        const i2 = (y * width + (x + dx)) * 4;
-        if (i1 >= 0 && i2 < data.length) {
-          const diff = Math.abs(data[i1] - data[i2]);
-          if (diff > 10 && diff < 40) patternScore++;
+      // Edge detection - look for subtle boundaries
+      let edgeScore = 0;
+      const edgeRadius = 2;
+      for (let dy = -edgeRadius; dy <= edgeRadius; dy++) {
+        for (let dx = -edgeRadius; dx <= edgeRadius; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const i1 = (y * width + x) * 4;
+          const i2 = ((y + dy) * width + (x + dx)) * 4;
+          if (i2 >= 0 && i2 < data.length) {
+            const diff = Math.abs(data[i1] - data[i2]) + 
+                        Math.abs(data[i1 + 1] - data[i2 + 1]) + 
+                        Math.abs(data[i1 + 2] - data[i2 + 2]);
+            if (diff > 15 && diff < 120) edgeScore++;
+          }
         }
       }
       
-      const isSubtleAnomaly = colorAnomaly > 18 && colorAnomaly < 95;
-      const hasPattern = patternScore >= 2;
+      // Texture variance - camouflaged objects often have texture differences
+      let textureVariance = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          if (i >= 0 && i < data.length) {
+            const localDiff = Math.abs(data[i] - localR) + 
+                             Math.abs(data[i + 1] - localG) + 
+                             Math.abs(data[i + 2] - localB);
+            textureVariance += localDiff;
+          }
+        }
+      }
+      textureVariance /= 25;
       
-      detectionMap[mapIdx] = (isSubtleAnomaly && hasPattern) ? Math.min(colorAnomaly, 255) : 0;
+      // More flexible detection: color anomaly OR edge detection OR texture
+      const isSubtleAnomaly = colorAnomaly > 12 && colorAnomaly < 120;
+      const hasEdges = edgeScore >= 3;
+      const hasTexture = textureVariance > 8 && textureVariance < 80;
+      
+      if (isSubtleAnomaly || (hasEdges && hasTexture)) {
+        detectionMap[mapIdx] = Math.min(Math.max(colorAnomaly, edgeScore * 10, textureVariance), 255);
+      } else {
+        detectionMap[mapIdx] = 0;
+      }
     }
   }
   
