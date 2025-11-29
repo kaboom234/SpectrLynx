@@ -11,14 +11,16 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64, maskBase64 } = await req.json();
+    const { imageBase64 } = await req.json();
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Call Lovable AI to analyze the camouflaged object
+    console.log("Analyzing image with AI...");
+
+    // Call Lovable AI to detect and analyze animals
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -30,31 +32,24 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an expert in wildlife detection and camouflage analysis. Analyze images to identify camouflaged objects with precision and detail."
+            content: "You are an expert wildlife biologist specializing in animal identification and camouflage analysis. Analyze images to detect and identify any animals present."
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Analyze this image and the binary mask showing detected camouflage regions. Identify what is camouflaged (animal species, military equipment, person, etc.), provide a detailed physical description including colors, patterns, size estimation, and explain how the camouflage works in this environment. Be specific and detailed. Format your response as JSON with these fields: objectType (string), species (string, if animal), confidence (number 0-100), description (string), camouflageAnalysis (string)."
+                text: "Carefully analyze this image and detect if there are any animals present. If you find an animal: 1) Identify the species with confidence level, 2) Describe its physical appearance (colors, patterns, size, posture), 3) Explain how it blends with the environment or stands out, 4) Describe its location and visibility in the image. If no animal is found, state that clearly. Format your response as JSON with: objectType (string - 'Animal', 'No animal detected', etc), species (string), confidence (number 0-100), description (string - detailed physical description), camouflageAnalysis (string - how it blends or visibility), location (string - where in the image)."
               },
               {
                 type: "image_url",
                 image_url: {
                   url: imageBase64
                 }
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: maskBase64
-                }
               }
             ]
           }
         ],
-        temperature: 0.3,
       }),
     });
 
@@ -80,6 +75,8 @@ serve(async (req) => {
     const data = await response.json();
     const aiResponse = data.choices?.[0]?.message?.content || "";
     
+    console.log("AI Response:", aiResponse);
+    
     // Try to parse JSON from the response
     let analysis;
     try {
@@ -88,13 +85,15 @@ serve(async (req) => {
       const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : aiResponse;
       analysis = JSON.parse(jsonStr);
     } catch (e) {
+      console.error("Failed to parse AI response:", e);
       // If parsing fails, create structured response from text
       analysis = {
         objectType: "Unknown",
         species: "",
         confidence: 50,
         description: aiResponse,
-        camouflageAnalysis: "Unable to parse detailed analysis."
+        camouflageAnalysis: "Unable to parse detailed analysis.",
+        location: "Unknown"
       };
     }
 

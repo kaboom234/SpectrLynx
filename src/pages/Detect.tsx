@@ -9,19 +9,14 @@ import { ResultsDisplay } from "@/components/ResultsDisplay";
 
 export interface DetectionResult {
   originalImage: string;
-  processedImage: string;
-  maskImage: string;
-  spectralMap: string;
-  accuracy: number;
-  camouflagePercentage: number;
-  identifiedAs: string;
   processingTime: number;
-  aiAnalysis?: {
+  aiAnalysis: {
     objectType: string;
-    species?: string;
+    species: string;
     confidence: number;
     description: string;
     camouflageAnalysis: string;
+    location: string;
   };
 }
 
@@ -66,52 +61,24 @@ const Detect = () => {
     const startTime = Date.now();
 
     try {
-      // Import image processing utility
-      const { processImageWithHighlighting } = await import("@/utils/imageProcessing");
-      
       // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(selectedFile);
       reader.onload = async () => {
         const base64Image = reader.result as string;
 
-        // Process image locally with visible highlighting
-        const processedImages = await processImageWithHighlighting(base64Image);
-
-        // Get analysis metrics from backend
-        const { data, error } = await supabase.functions.invoke("detect-camouflage", {
-          body: { image: base64Image },
+        // Get AI-powered animal detection
+        const { data: aiAnalysis, error } = await supabase.functions.invoke("analyze-camouflage", {
+          body: { 
+            imageBase64: base64Image
+          }
         });
 
         if (error) throw error;
 
-        // Get AI-powered analysis of the camouflaged object
-        let aiAnalysis;
-        try {
-          const { data: analysisData, error: analysisError } = await supabase.functions.invoke("analyze-camouflage", {
-            body: { 
-              imageBase64: base64Image,
-              maskBase64: processedImages.mask
-            }
-          });
-
-          if (!analysisError && analysisData) {
-            aiAnalysis = analysisData;
-          }
-        } catch (analysisError) {
-          console.error("AI analysis error:", analysisError);
-          // Continue without AI analysis if it fails
-        }
-
         const processingTime = (Date.now() - startTime) / 1000;
         
         setResult({
-          processedImage: processedImages.overlay,
-          maskImage: processedImages.mask,
-          spectralMap: processedImages.spectral,
-          accuracy: data.accuracy,
-          camouflagePercentage: data.camouflagePercentage,
-          identifiedAs: data.identifiedAs,
           originalImage: previewUrl,
           processingTime,
           aiAnalysis,
@@ -119,7 +86,7 @@ const Detect = () => {
 
         toast({
           title: "Analysis Complete",
-          description: `Processed in ${processingTime.toFixed(2)}s`,
+          description: `Detected in ${processingTime.toFixed(2)}s`,
         });
       };
       reader.onerror = () => {
